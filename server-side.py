@@ -99,7 +99,7 @@ def main():
         start_time = time.time()
         while time.time() - start_time < 10:
             try:
-                data, addr = s.recvfrom(1024)
+                data, addr = s.recvfrom(MAX_UDP_PAYLOAD_IPV4)
                 if data.decode() == "REGISTER":
                     if addr not in REGISTERED_CLIENTS:
                         REGISTERED_CLIENTS.append(addr)
