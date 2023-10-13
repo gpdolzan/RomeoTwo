@@ -35,7 +35,9 @@ def calculate_send_interval(video_file, info):
     send_interval = (1/info['fps']) / packets_per_frame
     return send_interval
 
-def process_video(video_file, server_ip, server_port, send_interval, client_addresses):
+REGISTERED_CLIENTS = []
+
+def process_video(video_file, server_ip, server_port, send_interval):
     info = get_video_info(video_file)
     print(f"Video Information: {info}")
 
@@ -47,9 +49,11 @@ def process_video(video_file, server_ip, server_port, send_interval, client_addr
         while chunk:
             # Prepend the 4-byte counter to the data chunk
             data_to_send = counter.to_bytes(4, 'big') + chunk
-            
-            for client_addr in client_addresses:
-                s.sendto(data_to_send, client_addr)
+            try:
+                for client in REGISTERED_CLIENTS:
+                    s.sendto(data_to_send, client)
+            except Exception as e:
+                print(f"Error sending to client {client}: {e}")
             
             # Update the counter
             counter = (counter + 1) % (2**32)  # Ensure it wraps around when reaching max uint32 value
@@ -68,27 +72,8 @@ def main():
 
     # Assuming you want to use the local IP address for the server
     server_ip = socket.gethostbyname(socket.gethostname())
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.bind((server_ip, server_port))
     
     print(f"Starting server on {server_ip}:{server_port}")
-
-    client_addresses = set()
-    print("Waiting for clients to register...")
-    
-    # Let's say we wait for 60 seconds for clients to register before starting to send the video
-    start_time = time.time()
-    while time.time() - start_time < 60:
-        try:
-            s.settimeout(1)  # check each second
-            data, client_address = s.recvfrom(1024)
-            if data.decode('utf-8') == 'REGISTER':
-                client_addresses.add(client_address)
-                print(f"Registered client: {client_address}")
-        except socket.timeout:
-            pass
-    
-    print(f"Registered clients: {client_addresses}")
 
     info = get_video_info(video_file)
     calculated_interval = calculate_send_interval(video_file, info)
@@ -105,7 +90,27 @@ def main():
     else:
         send_interval = calculated_interval
 
-    process_video(video_file, server_ip, server_port, send_interval, client_addresses)
+    # Create a socket to listen for registration messages
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.bind((server_ip, server_port))
+        s.settimeout(10)  # Set timeout for registration
+        print("Waiting for client registrations for 10 seconds...")
+        
+        start_time = time.time()
+        while time.time() - start_time < 10:
+            try:
+                data, addr = s.recvfrom(1024)
+                if data.decode() == "REGISTER":
+                    if addr not in REGISTERED_CLIENTS:
+                        REGISTERED_CLIENTS.append(addr)
+                        print(f"Registered client: {addr}")
+                    else:
+                        print(f"Client {addr} already registered")
+            except socket.timeout:
+                break
+
+    print("Starting video streaming to registered clients.")
+    process_video(video_file, server_ip, server_port, send_interval)
 
 if __name__ == "__main__":
     main()

@@ -5,6 +5,7 @@ import os
 from queue import PriorityQueue
 
 BUFFER_SIZE = 1452  # Adjust this based on your network's performance.
+MAX_UDP_PAYLOAD_IPV4 = 1452
 
 packet_counter = 0
 packet_queue = PriorityQueue()
@@ -21,44 +22,39 @@ def get_local_ip():
         s.close()
     return IP
 
-def listener(output_file, port):
-    global packet_counter
-    local_ip = get_local_ip()
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.bind((local_ip, port))
-    print(f"Listening on {local_ip}:{port}...")
-    s.settimeout(20)  # Set timeout to 20 seconds
-
-    try:
-        with open(output_file, 'wb') as f:
-            while True:
-                try:
-                    data, addr = s.recvfrom(BUFFER_SIZE)
-                    # Assuming the data packet structure is (counter, actual_data)
-                    counter, actual_data = data[0:4], data[4:]
-                    packet_queue.put((counter, actual_data))
-                    # Increment and print the counter
-                    print(f"Received packet: {packet_counter}")
-                    packet_counter += 1
-                except socket.timeout:
-                    print("No packets received for 20 seconds. Exiting...")
-                    break
-
-            while not packet_queue.empty():
-                _, packet_data = packet_queue.get()
-                f.write(packet_data)
-                
-    finally:
-        s.close()
-
 def main():
-    if len(sys.argv) < 3:
-        print("Usage: python client-side.py output_file client_port")
+    if len(sys.argv) < 4:
+        print("Usage: python client-side.py output_file server_ip client_port")
         sys.exit(1)
 
     output_name = sys.argv[1]
-    client_port = int(sys.argv[2])
-    listener(output_name, client_port)
+    server_ip = sys.argv[2]
+    client_port = int(sys.argv[3])
+
+    # Register with the server
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.sendto("REGISTER".encode(), (server_ip, client_port))
+    
+    print(f"Listening for packets from {server_ip}:{client_port}...")
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.bind((get_local_ip(), client_port))
+
+    with open(output_name, 'wb') as f:
+        last_received_time = time.time()
+        while True:
+            s.settimeout(20)  # If no packets are received in 20 seconds, it will raise a timeout exception.
+            try:
+                data, _ = s.recvfrom(MAX_UDP_PAYLOAD_IPV4)
+                counter = int.from_bytes(data[:4], 'big')
+                f.write(data[4:])
+                print(f"Received packet: {counter}")
+                last_received_time = time.time()
+            except socket.timeout:
+                # If 20 seconds have passed since the last packet, we assume it's done.
+                if time.time() - last_received_time >= 20:
+                    print("No packets received for 20 seconds. Exiting.")
+                    break
 
 if __name__ == "__main__":
     main()
