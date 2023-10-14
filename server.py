@@ -6,7 +6,7 @@ import re
 from moviepy.editor import VideoFileClip
 
 # Configuração do servidor
-VIDEO = "jenni_converted.ts"
+VIDEO = "yellow_1080_ts.ts"
 SERVER_IP = '192.168.68.127'
 SERVER_PORT = 12345
 BUFFER_SIZE = 65507  # MTU IPV4 - 20 (IP header) - 8 (UDP header)
