@@ -2,7 +2,7 @@ import socket
 import subprocess
 
 # Configuração do cliente
-SERVER_IP = '127.0.0.1'
+SERVER_IP = '192.168.68.127'
 SERVER_PORT = 12345
 
 BUFFER_SIZE = 65507
