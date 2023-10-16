@@ -1,0 +1,9 @@
+=====================================================================================
+Inicio da execucao: programa que implementa o servidor de streaming de video com udp.
+Gabriel Pimentel Dolzan e Tulio de Padua Dutra - Disciplina Redes de Computadores II
+=====================================================================================
+Lista de videos atualizada com sucesso
+Socket UDP do Servidor criado com sucesso - IP: 192.168.68.127 - Porta: 8521
+MENSAGEM: REGISTERUSER de ('192.168.68.103', 8522)
+Cliente registrado: ('192.168.68.103', 8522), iniciando thread com endereco ('192.168.68.127', 8420)
+Fim da execucao do programa.

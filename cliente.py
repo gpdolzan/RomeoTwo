@@ -232,6 +232,7 @@ def show_main_client_interface():
         player.set_hwnd(vlc_frame.winfo_id())
     else:  # Assume Unix-based system
         player.set_xwindow(vlc_frame.winfo_id())
+        root.update()
 
     # Add a play button or other controls if necessary
     btn_play = customtkinter.CTkButton(frame, text="Play Video", command=lambda: play_video(player))
