@@ -1,0 +1,7 @@
+====================================================================================
+Inicio da execucao: programa que implementa o cliente de streaming de video com udp.
+Gabriel Pimentel Dolzan e Tulio de Padua Dutra - Disciplina Redes de Computadores II
+====================================================================================
+Socket UDP do Cliente criado com sucesso - IP: 192.168.68.127 - Porta: 8522
+Tentando contato com o servidor IP:192.168.68.127 - Porta:8521
+Servidor respondeu: REGISTERUSEROK no endereco ('192.168.68.127', 8421)

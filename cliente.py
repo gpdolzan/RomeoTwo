@@ -5,6 +5,7 @@ import sys
 import time
 import vlc
 import os
+import platform
 
 # GLOBALS
 
@@ -228,11 +229,16 @@ def show_main_client_interface():
     vlc_instance = vlc.Instance()
     player = vlc_instance.media_player_new()
     
-    if os.name == "nt":  # This means we're on Windows
+    if platform.system() == "Windows":
         player.set_hwnd(vlc_frame.winfo_id())
-    else:  # Assume Unix-based system
+    elif platform.system() == "Darwin":  # macOS
+        from ctypes import c_void_p
+        ns_view = c_void_p(vlc_frame.winfo_id())
+        player.set_nsobject(ns_view.value)
+    elif platform.system() == "Linux":
         player.set_xwindow(vlc_frame.winfo_id())
-        root.update()
+    else:
+        raise Exception("Unsupported OS")
 
     # Add a play button or other controls if necessary
     btn_play = customtkinter.CTkButton(frame, text="Play Video", command=lambda: play_video(player))
