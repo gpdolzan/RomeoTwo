@@ -213,7 +213,7 @@ def show_main_client_interface():
     # Change geometry for 720p
     root.geometry("1280x720")
 
-    # Here, you can start populating the root window with new content.
+    # Here, you can start populating the root window with new content.aa
     frame = customtkinter.CTkFrame(root)
     frame.pack(pady=10, padx=10, fill="both", expand=True)
 
