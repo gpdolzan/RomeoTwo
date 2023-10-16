@@ -3,13 +3,17 @@ import customtkinter
 import threading
 import sys
 import time
+import os
+import subprocess
 
 # GLOBALS
 original_stdout = None
 log_stdout = None
 server_running = False
 server_ip = None
+server_socket = None
 registered_users = []
+video_list = []
 log_lock = threading.Lock()
 
 # CONSTANTES
@@ -33,16 +37,35 @@ def get_local_ip():
         s.close()
     server_ip = IP
 
+def set_thread_socket():
+    global server_ip
+    # Try to bind to a port. If it fails, try the next one.
+    for port in range(8420, 8520):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.bind((server_ip, port))
+            return s
+            break
+        except OSError:
+            continue
+    # If we get here, we couldn't bind to any port, open dialog and exit
+    show_error_dialog(root, "Nao foi possivel abrir uma porta para o servidor.")
+    log("Nao foi possivel abrir uma porta para a thread do usuario.")
+    return None
+
 # Dedicated thread to handle communication with a particular user
-def user_thread(addr, server_socket):
+def user_thread(addr, thread_socket):
     while server_running:
-        data, user_addr = server_socket.recvfrom(BEST_UDP_PACKET_SIZE)
+        data, user_addr = thread_socket.recvfrom(BEST_UDP_PACKET_SIZE)
         if user_addr != addr:
             continue  # Not the right user for this thread
 
         # Handle other messages from the user here.
         # For example, just echoing back for now:
-        server_socket.sendto(data, addr)
+        thread_socket.sendto(data, addr)
+    # Close socket
+    log(f"Fechando socket da thread {addr}.")
+    thread_socket.close()
 
 # LOG FUNCS
 
@@ -77,11 +100,44 @@ def log(message):
         # return to original stdout
         sys.stdout = original_stdout
 
+# VIDEO LIST FUNCS
+
+def read_video_list():
+    with open("list/video_list.txt", "r") as file:
+        video_list = file.read().splitlines()
+    return video_list
+                
+
+def view_videos_folder():
+    # get name of all .ts videos in the folder videos
+    videos = [f for f in os.listdir("videos") if os.path.isfile(os.path.join("videos", f)) and f.endswith(".ts")]
+    return videos
+
+def update_video_list():
+    global video_list
+    folder = view_videos_folder()
+    video_list = read_video_list()
+
+    # check if there are new videos
+    for video in folder:
+        if video not in video_list:
+            log(f"Novo video encontrado: {video}, adicionando a lista")
+
+            # write new video to video_list.txt
+            with open("list/video_list.txt", "a") as file:
+                file.write(video + "\n")
+            # add new video to video_list
+            video_list.append(video)
+
+    log("Lista de videos atualizada com sucesso")
+    return
+
 # TKINTER FUNCS
 
 def on_btn_exit_click():
     global root
     global server_running
+    global server_socket
     server_running = False
     log("Fim da execucao do programa.")
     root.destroy()
@@ -133,6 +189,7 @@ def run_server():
     global server_running
     global server_ip
     global root
+    global server_socket
     server_running = True
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server_socket:
         # Try to bind to port 8521, if it fails, abort, there is another server running
@@ -150,18 +207,28 @@ def run_server():
 
         while server_running:  # using the flag to control the loop
             data, addr = server_socket.recvfrom(BEST_UDP_PACKET_SIZE)
+            if addr in registered_users:
+                continue  # Ignore registered users in the main loop
+
             if data == b"REGISTERUSER":
-                log(f"MENSAGEM: REGISTERUSER de {addr}, respondendo com REGISTERUSEROK")
-                server_socket.sendto(b"REGISTERUSEROK", addr)
-                registered_users.append(addr)
-                log(f"Cliente registrado: {addr}, iniciando thread.")
-                threading.Thread(target=user_thread, args=(addr, server_socket), daemon=True).start()
+                log(f"MENSAGEM: REGISTERUSER de {addr}")
+                thread_socket = set_thread_socket()
+                if thread_socket is not None:
+                    thread_socket.sendto(b"REGISTERUSEROK", addr)
+                    registered_users.append(addr)
+                    log(f"Cliente registrado: {addr}, iniciando thread com endereco {thread_socket.getsockname()}")
+                    threading.Thread(target=user_thread, args=(addr, thread_socket), daemon=True).start()
+
+        # close socket
+        log("Fechando socket principal do servidor.")
+        server_socket.close()
 
 # MAIN
 if __name__ == "__main__":
     # Get ip "Servidor"
     get_local_ip()
     start_log()
+    update_video_list()
     root = create_server_gui()
     threading.Thread(target=run_server, daemon=True).start()
     root.mainloop()

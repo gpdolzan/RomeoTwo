@@ -1,7 +1,10 @@
 import customtkinter
+import tkinter
 import socket
 import sys
 import time
+import vlc
+import os
 
 # GLOBALS
 
@@ -13,6 +16,7 @@ dialog = None # The dialog box for errors
 client_ip = None
 client_port = None
 client_socket = None
+thread_address = None
 
 # CONSTANTS
 
@@ -87,6 +91,11 @@ def close_client_socket():
 
 def on_btn_exit_click():
     global root
+    global client_socket
+
+    # Close socket
+    log("Fechando socket do cliente.")
+    close_client_socket()
     log("Fim da execucao do programa.")
     root.destroy()
 
@@ -128,6 +137,7 @@ def on_btn_connect_click():
     global entry_ip_port
     global root
     global client_socket
+    global thread_address
     ip_port_value = entry_ip_port.get()  # Get the value from the entry
     if ":" not in ip_port_value:
         show_error_dialog(root, "Invalid IP or PORT")
@@ -144,9 +154,11 @@ def on_btn_connect_click():
     # wait for response, if not received in 5 seconds, log error, show dialog box and ask user to try again
     client_socket.settimeout(5)
     try:
-        data, addr = client_socket.recvfrom(1024)
+        data, addr = client_socket.recvfrom(BEST_UDP_PACKET_SIZE)
         if data == b"REGISTERUSEROK":
-            log("Servidor respondeu: REGISTERUSEROK - Usuario registrado com sucesso.")
+            log("Servidor respondeu: REGISTERUSEROK no endereco " + str(addr))
+            thread_address = addr
+            show_main_client_interface()
         else:
             log("Servidor respondeu: " + data.decode("utf-8"))
             show_error_dialog(root, "Erro ao se conectar com o servidor.\n Tente novamente.")
@@ -189,6 +201,42 @@ def create_connect_menu():
 
     return root
 
+def show_main_client_interface():
+    global root
+    global vlc_instance  # Make sure the vlc_instance is global or managed properly
+
+    # Clear the root window
+    for widget in root.winfo_children():
+        widget.destroy()
+
+    # Change geometry for 720p
+    root.geometry("1280x720")
+
+    # Here, you can start populating the root window with new content.
+    frame = customtkinter.CTkFrame(root)
+    frame.pack(pady=10, padx=10, fill="both", expand=True)
+
+    # A label for representation
+    #label = customtkinter.CTkLabel(frame, text="Main Client Interface", font=("Roboto", 36))
+    #label.pack(pady=24, padx=10)
+
+    # Create a Frame for VLC player inside the main frame
+    vlc_frame = tkinter.Frame(frame)
+    vlc_frame.pack(pady=20, fill=tkinter.BOTH, expand=True)
+
+    # VLC setup
+    vlc_instance = vlc.Instance()
+    player = vlc_instance.media_player_new()
+    
+    if os.name == "nt":  # This means we're on Windows
+        player.set_hwnd(vlc_frame.winfo_id())
+    else:  # Assume Unix-based system
+        player.set_xwindow(vlc_frame.winfo_id())
+
+    # Add a play button or other controls if necessary
+    btn_play = customtkinter.CTkButton(frame, text="Play Video", command=lambda: play_video(player))
+    btn_play.pack(pady=20)
+
 # GENERAL CLIENT FUNCS
 
 def init_client():
@@ -202,6 +250,16 @@ def init_client():
     # Start Graphical Interface
     root = create_connect_menu()
     root.mainloop()
+
+# TESTE
+
+def play_video(player):
+    # This plays the video inside the frame.
+    # You can use any video source, such as a file path or a streaming URL.
+    media = vlc_instance.media_new('videos/yellow.ts')
+    player.set_media(media)
+    player.play()
+
 
 if __name__ == "__main__":
     init_client()
