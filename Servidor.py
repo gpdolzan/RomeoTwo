@@ -5,6 +5,7 @@ import sys
 import time
 import os
 import subprocess
+import struct
 
 # GLOBALS
 original_stdout = None
@@ -15,10 +16,13 @@ server_socket = None
 registered_users = []
 video_list = []
 log_lock = threading.Lock()
+registered_users_lock = threading.Lock()
 
 # CONSTANTES
 SERVER_PORT = 8521
-BEST_UDP_PACKET_SIZE = 1472 - 4 # 4 bytes reserved for our counter
+BEST_UDP_PACKET_SIZE = 1472
+COUNTER_SIZE = 4 # 4 bytes reserved for our counter
+MESSAGE_SIZE = BEST_UDP_PACKET_SIZE - 4
 
 # SOCKET FUNCS
 
@@ -53,16 +57,65 @@ def set_thread_socket():
     log("Nao foi possivel abrir uma porta para a thread do usuario.")
     return None
 
+
 # Dedicated thread to handle communication with a particular user
 def user_thread(addr, thread_socket):
+    global video_list
     while server_running:
         data, user_addr = thread_socket.recvfrom(BEST_UDP_PACKET_SIZE)
         if user_addr != addr:
             continue  # Not the right user for this thread
 
-        # Handle other messages from the user here.
-        # For example, just echoing back for now:
-        thread_socket.sendto(data, addr)
+        # Desempacotar counter e verificar a mensagem
+        received_counter = struct.unpack('!I', data[-COUNTER_SIZE:])[0]
+        received_message = data[:-COUNTER_SIZE]
+
+        # Tratar mensagens diferentes aqui
+        if received_message.startswith(b"GETLIST"):
+            log("Cliente solicitou lista de videos, enviando para " + str(addr))
+
+            # Convert the video list to a string
+            video_string = ":".join(video_list)
+
+            # Calculate how many bytes we can send in each message
+            max_data_size = BEST_UDP_PACKET_SIZE - COUNTER_SIZE - 5 # 5 = "LIST:"
+
+            # Split the video list into chunks that fit within the data size limit
+            chunks = [video_string[i:i + max_data_size] for i in range(0, len(video_string), max_data_size)]
+
+            for chunk in chunks:
+                # Construct the message with the "LIST:" prefix
+                message = b"LIST:" + chunk.encode()
+
+                # Attach the counter
+                counter_bytes = struct.pack('!I', received_counter)
+                full_message = message + counter_bytes
+
+                # Send the chunk
+                thread_socket.sendto(full_message, addr)
+
+                # Increment the counter for the next message
+                received_counter += 1
+
+            # Send the ENDLIST message
+            end_message = b"ENDLIST" + struct.pack('!I', received_counter)
+            thread_socket.sendto(end_message, addr)
+        elif received_message.startswith(b"DEREGISTERUSER"):
+            with registered_users_lock:
+                registered_users.remove(addr)
+            log(f"Cliente {addr} solicitou para ser removido da lista de usuarios registrados.")
+
+            # Send DEREGISTERUSEROK
+            counter_bytes = struct.pack('!I', received_counter + 1)
+            response_message = b"DEREGISTERUSEROK".ljust(MESSAGE_SIZE, b'\0')  # Preenchendo a mensagem para atingir MESSAGE_SIZE
+            full_response = response_message + counter_bytes
+
+            log(f"Enviando DEREGISTERUSEROK para {addr}")
+            thread_socket.sendto(full_response, addr)
+
+            # end thread loop
+            break
+
     # Close socket
     log(f"Fechando socket da thread {addr}.")
     thread_socket.close()
@@ -139,6 +192,7 @@ def on_btn_exit_click():
     global server_running
     global server_socket
     server_running = False
+
     log("Fim da execucao do programa.")
     root.destroy()
 
@@ -207,14 +261,22 @@ def run_server():
 
         while server_running:  # using the flag to control the loop
             data, addr = server_socket.recvfrom(BEST_UDP_PACKET_SIZE)
-            if addr in registered_users:
-                continue  # Ignore registered users in the main loop
+            with registered_users_lock:
+                if addr in registered_users:
+                    continue  # Ignore registered users in the main loop
 
-            if data == b"REGISTERUSER":
-                log(f"MENSAGEM: REGISTERUSER de {addr}")
+            # Desempacotar counter e verificar a mensagem
+            received_counter = struct.unpack('!I', data[-COUNTER_SIZE:])[0]
+            received_message = data[:-COUNTER_SIZE]
+
+            if received_message.startswith(b"REGISTERUSER"):
                 thread_socket = set_thread_socket()
                 if thread_socket is not None:
-                    thread_socket.sendto(b"REGISTERUSEROK", addr)
+                    counter_bytes = struct.pack('!I', received_counter + 1)  # Incrementar o contador para a resposta
+                    response_message = b"REGISTERUSEROK".ljust(MESSAGE_SIZE, b'\0')  # Preenchendo a mensagem para atingir MESSAGE_SIZE
+                    full_response = response_message + counter_bytes
+
+                    thread_socket.sendto(full_response, addr)
                     registered_users.append(addr)
                     log(f"Cliente registrado: {addr}, iniciando thread com endereco {thread_socket.getsockname()}")
                     threading.Thread(target=user_thread, args=(addr, thread_socket), daemon=True).start()

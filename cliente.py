@@ -6,6 +6,7 @@ import time
 import vlc
 import os
 import platform
+import struct
 
 # GLOBALS
 
@@ -18,10 +19,14 @@ client_ip = None
 client_port = None
 client_socket = None
 thread_address = None
+video_list = None
+is_registered = False
 
 # CONSTANTS
 
-BEST_UDP_PACKET_SIZE = 1472 - 4 # 4 bytes reserved for our counter
+BEST_UDP_PACKET_SIZE = 1472 # 4 bytes reserved for our counter
+COUNTER_SIZE = 4 # 4 bytes reserved for our counter
+MESSAGE_SIZE = BEST_UDP_PACKET_SIZE - 4
 
 # LOG FUNCS
 
@@ -88,11 +93,86 @@ def close_client_socket():
     if client_socket is not None:
         client_socket.close()
 
+def ask_server_for_video_list():
+    global thread_address
+    global video_list
+
+    video_list = []  # Initialize video_list as an empty list
+    # Anexar contador. Vou supor que o contador é um número inteiro e que usaremos struct para formatá-lo como 4 bytes.
+    counter = 1  # Suponho que você vai incrementar isso em algum lugar ou mudá-lo conforme necessário.
+    counter_bytes = struct.pack('!I', counter)
+
+    log("Enviando mensagem GETLIST para o servidor " + str(thread_address))
+    # Criar a mensagem ASKLIST
+    message = b"GETLIST".ljust(MESSAGE_SIZE, b'\0')  # Preenchendo a mensagem com zeros para atingir MESSAGE_SIZE
+
+    # Combinar ASKLIST com counter_bytes
+    full_message = message + counter_bytes
+    
+    # Enviar mensagem para o servidor
+    client_socket.sendto(full_message, thread_address)
+    
+    # Esperar resposta do servidor (com timeout)
+    while True:
+        try:
+            client_socket.settimeout(5)  # Definir um timeout de 5 segundos
+            data, addr = client_socket.recvfrom(BEST_UDP_PACKET_SIZE)  # Receber até o tamanho BEST_UDP_PACKET_SIZE
+        
+            # Os 4 últimos bytes são o contador
+            received_counter = struct.unpack('!I', data[-COUNTER_SIZE:])[0]
+        
+            # O restante é a mensagem
+            received_message = data[:-COUNTER_SIZE]
+            
+            if received_message.startswith(b"LIST:"):
+                videos_in_message = received_message[5:].decode().split(":")
+                video_list.extend(videos_in_message)
+            elif received_message == b"ENDLIST":
+                return video_list  # Return the accumulated video list
+            else:
+                print("Resposta inesperada do servidor:", received_message)
+                return None
+
+        except socket.timeout:
+            print("Timeout ao aguardar resposta do servidor.")
+            return None
+
 # TKINTER FUNCS
 
 def on_btn_exit_click():
     global root
     global client_socket
+    global is_registered
+
+    if is_registered:
+        # Send DEREGISTERUSER to server
+        log("Enviando mensagem DEREGISTERUSER para o servidor " + str(thread_address))
+
+        # Preparar a mensagem "DEREGISTERUSER" com o counter
+        counter = 1  # Suponho que você incrementará ou mudará conforme necessário.
+        counter_bytes = struct.pack('!I', counter)
+        message = b"DEREGISTERUSER".ljust(MESSAGE_SIZE, b'\0')  # Preenchendo a mensagem com zeros para atingir MESSAGE_SIZE
+        full_message = message + counter_bytes
+
+        # Enviar a mensagem formatada para o servidor
+        client_socket.sendto(full_message, thread_address)
+
+        # Esperar DEREGISTERUSEROK
+        client_socket.settimeout(5)
+        try:
+            data, addr = client_socket.recvfrom(BEST_UDP_PACKET_SIZE)
+
+            # Desempacotar counter e verificar a mensagem
+            received_counter = struct.unpack('!I', data[-COUNTER_SIZE:])[0]
+            received_message = data[:-COUNTER_SIZE]
+
+            if received_message.startswith(b"DEREGISTERUSEROK"):
+                log("Servidor respondeu: DEREGISTERUSEROK no endereco " + str(addr))
+                is_registered = True
+            else:
+                log("Servidor respondeu: " + received_message.decode("utf-8"))
+        except socket.timeout:
+            log("Servidor " + str(thread_address) + " nao respondeu.")
 
     # Close socket
     log("Fechando socket do cliente.")
@@ -139,6 +219,7 @@ def on_btn_connect_click():
     global root
     global client_socket
     global thread_address
+    
     ip_port_value = entry_ip_port.get()  # Get the value from the entry
     if ":" not in ip_port_value:
         show_error_dialog(root, "Invalid IP or PORT")
@@ -150,18 +231,33 @@ def on_btn_connect_click():
         return
 
     log("Tentando contato com o servidor IP:" + ip + " - Porta:" + port)
-    # using client socket send a message to server
-    client_socket.sendto(b"REGISTERUSER", (ip, int(port)))
-    # wait for response, if not received in 5 seconds, log error, show dialog box and ask user to try again
+
+    log("Enviando mensagem REGISTERUSER para o servidor " + str(thread_address))
+
+    # Preparar a mensagem "REGISTERUSER" com o counter
+    counter = 1  # Suponho que você incrementará ou mudará conforme necessário.
+    counter_bytes = struct.pack('!I', counter)
+    message = b"REGISTERUSER".ljust(MESSAGE_SIZE, b'\0')  # Preenchendo a mensagem com zeros para atingir MESSAGE_SIZE
+    full_message = message + counter_bytes
+
+    # Enviar a mensagem formatada para o servidor
+    client_socket.sendto(full_message, (ip, int(port)))
+
+    # Esperar resposta
     client_socket.settimeout(5)
     try:
         data, addr = client_socket.recvfrom(BEST_UDP_PACKET_SIZE)
-        if data == b"REGISTERUSEROK":
+
+        # Desempacotar counter e verificar a mensagem
+        received_counter = struct.unpack('!I', data[-COUNTER_SIZE:])[0]
+        received_message = data[:-COUNTER_SIZE]
+
+        if received_message.startswith(b"REGISTERUSEROK"):
             log("Servidor respondeu: REGISTERUSEROK no endereco " + str(addr))
             thread_address = addr
-            show_main_client_interface()
+            show_client_list()
         else:
-            log("Servidor respondeu: " + data.decode("utf-8"))
+            log("Servidor respondeu: " + received_message.decode("utf-8"))
             show_error_dialog(root, "Erro ao se conectar com o servidor.\n Tente novamente.")
     except socket.timeout:
         log("Servidor IP:" + ip + " - Porta:" + port + " nao respondeu.")
@@ -201,6 +297,39 @@ def create_connect_menu():
     button_exit.pack(pady=10, padx=10, side="left", expand=True)
 
     return root
+
+def show_client_list():
+    global root
+
+    # Clear the root window
+    for widget in root.winfo_children():
+        widget.destroy()
+
+    # Adjusting the geometry for a vertical strip
+    root.geometry("360x720")
+    video_list = ask_server_for_video_list()
+    log("Lista de videos recebida do servidor: " + str(video_list))
+
+    # Here, you can start populating the root window with new content.
+    frame = customtkinter.CTkFrame(root)
+    frame.pack(pady=10, padx=10, fill="both", expand=True)
+
+    # A label for representation
+    label = customtkinter.CTkLabel(frame, text="Lista de Videos", font=("Roboto", 36))
+    label.pack(pady=24, padx=10)
+
+    # A Scrollable Frame for the list of videos, with each video being a button
+    scrollable_frame = customtkinter.CTkScrollableFrame(frame)
+    scrollable_frame.pack(pady=10, padx=10, fill="both", expand=True)
+
+    # A button for each video
+    for video in video_list:
+        button = customtkinter.CTkButton(scrollable_frame, text=video, font=("Roboto", 18), command=show_main_client_interface)
+        button.pack(pady=10, padx=10, fill="x")
+
+    # Exit button placed at the bottom
+    btn_exit = customtkinter.CTkButton(root, text="Sair", font=("Roboto", 18), fg_color="red", hover_color="darkred", command=on_btn_exit_click)
+    btn_exit.pack(pady=10, padx=10, fill="x")
 
 def show_main_client_interface():
     global root
