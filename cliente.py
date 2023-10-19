@@ -365,7 +365,15 @@ def play_video(video_name):
     # Set up VLC player in the video frame
     Instance = vlc.Instance("--no-xlib")
     player = Instance.media_player_new()
-    player.set_xwindow(video_frame.winfo_id())  # This line sets the VLC output to the tkinter frame
+    
+    if sys.platform.startswith('linux'):
+        player.set_xwindow(video_frame.winfo_id())
+    elif sys.platform == 'win32':
+        player.set_hwnd(video_frame.winfo_id())
+    elif sys.platform == 'darwin':
+        # Handle MacOS. The implementation might be more involved than just this line.
+        player.set_nsobject(video_frame.winfo_id())
+    
     media = Instance.media_new("videos/" + video_name)
     player.set_media(media)
     player.play()
