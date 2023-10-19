@@ -1,0 +1,9 @@
+=====================================================================================
+Inicio da execucao: programa que implementa o servidor de streaming de video com udp.
+Gabriel Pimentel Dolzan e Tulio de Padua Dutra - Disciplina Redes de Computadores II
+=====================================================================================
+Lista de videos atualizada com sucesso
+Socket UDP do Servidor criado com sucesso - IP: 172.23.203.3 - Porta: 8521
+Cliente registrado: ('172.23.203.3', 8522), iniciando thread com endereco ('172.23.203.3', 8420)
+Cliente solicitou lista de videos, enviando para ('172.23.203.3', 8522)
+Fim da execucao do programa.

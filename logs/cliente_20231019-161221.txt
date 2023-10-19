@@ -1,0 +1,10 @@
+====================================================================================
+Inicio da execucao: programa que implementa o cliente de streaming de video com udp.
+Gabriel Pimentel Dolzan e Tulio de Padua Dutra - Disciplina Redes de Computadores II
+====================================================================================
+Socket UDP do Cliente criado com sucesso - IP: 172.23.203.3 - Porta: 8522
+Tentando contato com o servidor IP:172.23.203.3 - Porta:8521
+Enviando mensagem REGISTERUSER para o servidor None
+Servidor respondeu: REGISTERUSEROK no endereco ('172.23.203.3', 8420)
+Enviando mensagem GETLIST para o servidor ('172.23.203.3', 8420)
+Lista de videos recebida do servidor: ['yellow.ts', 'paradise.ts']

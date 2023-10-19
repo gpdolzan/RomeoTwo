@@ -7,10 +7,7 @@ import os
 import platform
 import struct
 import subprocess
-
-# SETTING UP MPV
-os.environ["PATH"] = "C:\\mpv\\" + os.pathsep + os.environ["PATH"]
-import mpv
+import vlc
 
 # GLOBALS
 
@@ -342,7 +339,7 @@ def stop_playing_video():
     global player
 
     if player:
-        player.terminate()  # Terminate the MPV player instance
+        player.stop()  # Terminate the MPV player instance
         player = None
     show_client_list()
 
@@ -365,13 +362,18 @@ def play_video(video_name):
     video_frame = customtkinter.CTkFrame(main_frame)
     video_frame.pack(fill="both", expand=True, pady=(0, 10))
 
-    # Set up MPV player in the video frame
-    player = mpv.MPV(wid=str(video_frame.winfo_id()), ytdl=True)
-    
+    # Set up VLC player in the video frame
+    vlc_instance = vlc.Instance("--no-xlib", "--quiet")
+    player = vlc_instance.media_player_new()
+
+    # Embed VLC player into the tkinter frame
+    player.set_xwindow(video_frame.winfo_id())
+
     # Load and play the video
     video_path = os.path.join("videos", video_name)
-    player.play(video_path)
-    player.volume = 50
+    player.set_mrl(video_path)
+    player.play()
+    player.audio_set_volume(50)
 
     # Controls frame
     controls_frame = customtkinter.CTkFrame(main_frame)
@@ -379,12 +381,12 @@ def play_video(video_name):
 
     # Pause/Play button
     def toggle_play_pause():
-        if player.pause:
-            player.pause = False
-            btn_pause_play.configure(text="Pause")
-        else:
-            player.pause = True
+        if player.is_playing():
+            player.pause()
             btn_pause_play.configure(text="Play")
+        else:
+            player.play()
+            btn_pause_play.configure(text="Pause")
             update_duration()
 
     btn_pause_play = customtkinter.CTkButton(controls_frame, text="Pause", font=("Roboto", 14), command=toggle_play_pause)
@@ -417,7 +419,7 @@ def play_video(video_name):
 
     def adjust_volume(lbl_current_volume, event=None):
         volume = max(0, min(100, int(volume_slider.get())))
-        player.volume = volume
+        player.audio_set_volume(volume)
         lbl_current_volume.configure(text=str(volume))
 
     # Compact volume slider
