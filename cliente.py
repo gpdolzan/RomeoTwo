@@ -363,17 +363,13 @@ def play_video(video_name):
     video_frame.pack(fill="both", expand=True, pady=(0, 10))
 
     # Set up VLC player in the video frame
-    vlc_instance = vlc.Instance("--no-xlib", "--quiet")
-    player = vlc_instance.media_player_new()
-
-    # Embed VLC player into the tkinter frame
-    player.set_xwindow(video_frame.winfo_id())
-
-    # Load and play the video
-    video_path = os.path.join("videos", video_name)
-    player.set_mrl(video_path)
+    Instance = vlc.Instance("--no-xlib")
+    player = Instance.media_player_new()
+    player.set_xwindow(video_frame.winfo_id())  # This line sets the VLC output to the tkinter frame
+    media = Instance.media_new("videos/" + video_name)
+    player.set_media(media)
     player.play()
-    player.audio_set_volume(50)
+    player.audio_set_volume(50) # Start audio with 50%
 
     # Controls frame
     controls_frame = customtkinter.CTkFrame(main_frame)
@@ -414,7 +410,7 @@ def play_video(video_name):
     lbl_total_time = customtkinter.CTkLabel(controls_frame, text="0:00", font=("Roboto", 14))
     lbl_total_time.pack(side='left', padx=5)
 
-    lbl_current_volume = customtkinter.CTkLabel(controls_frame, text=str(int(player.volume)), font=("Roboto", 14))
+    lbl_current_volume = customtkinter.CTkLabel(controls_frame, text=str(player.audio_get_volume()), font=("Roboto", 14))
     lbl_current_volume.pack(side='left', padx=5)
 
     def adjust_volume(lbl_current_volume, event=None):
@@ -424,7 +420,6 @@ def play_video(video_name):
 
     # Compact volume slider
     volume_slider = customtkinter.CTkSlider(controls_frame, width=100, from_=0, to=100)
-    volume_slider.set(50)
     volume_slider.bind("<ButtonRelease-1>", lambda event, lbl=lbl_current_volume: adjust_volume(lbl, event))
     volume_slider.pack(side='left', padx=5)
 
