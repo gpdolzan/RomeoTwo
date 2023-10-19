@@ -3,10 +3,14 @@ import tkinter
 import socket
 import sys
 import time
-import vlc
 import os
 import platform
 import struct
+import subprocess
+
+# SETTING UP MPV
+os.environ["PATH"] = "C:\\mpv\\" + os.pathsep + os.environ["PATH"]
+import mpv
 
 # GLOBALS
 
@@ -21,6 +25,7 @@ client_socket = None
 thread_address = None
 video_list = None
 is_registered = False
+player = None # MPV video player
 
 # CONSTANTS
 
@@ -168,7 +173,7 @@ def on_btn_exit_click():
 
             if received_message.startswith(b"DEREGISTERUSEROK"):
                 log("Servidor respondeu: DEREGISTERUSEROK no endereco " + str(addr))
-                is_registered = True
+                is_registered = False
             else:
                 log("Servidor respondeu: " + received_message.decode("utf-8"))
         except socket.timeout:
@@ -219,6 +224,7 @@ def on_btn_connect_click():
     global root
     global client_socket
     global thread_address
+    global is_registered
     
     ip_port_value = entry_ip_port.get()  # Get the value from the entry
     if ":" not in ip_port_value:
@@ -254,6 +260,7 @@ def on_btn_connect_click():
 
         if received_message.startswith(b"REGISTERUSEROK"):
             log("Servidor respondeu: REGISTERUSEROK no endereco " + str(addr))
+            is_registered = True
             thread_address = addr
             show_client_list()
         else:
@@ -306,7 +313,7 @@ def show_client_list():
         widget.destroy()
 
     # Adjusting the geometry for a vertical strip
-    root.geometry("360x720")
+    root.geometry("360x600")
     video_list = ask_server_for_video_list()
     log("Lista de videos recebida do servidor: " + str(video_list))
 
@@ -324,54 +331,104 @@ def show_client_list():
 
     # A button for each video
     for video in video_list:
-        button = customtkinter.CTkButton(scrollable_frame, text=video, font=("Roboto", 18), command=show_main_client_interface)
+        button = customtkinter.CTkButton(scrollable_frame, text=video, font=("Roboto", 18), command=lambda video_name=video: play_video(video_name))
         button.pack(pady=10, padx=10, fill="x")
 
     # Exit button placed at the bottom
     btn_exit = customtkinter.CTkButton(root, text="Sair", font=("Roboto", 18), fg_color="red", hover_color="darkred", command=on_btn_exit_click)
     btn_exit.pack(pady=10, padx=10, fill="x")
 
-def show_main_client_interface():
+def stop_playing_video():
+    global player
+
+    if player:
+        player.terminate()  # Terminate the MPV player instance
+        player = None
+    show_client_list()
+
+def play_video(video_name):
     global root
-    global vlc_instance  # Make sure the vlc_instance is global or managed properly
+    global player
 
     # Clear the root window
     for widget in root.winfo_children():
         widget.destroy()
 
-    # Change geometry for 720p
+    # Change geometry for 1280x720
     root.geometry("1280x720")
 
-    # Here, you can start populating the root window with new content.aa
-    frame = customtkinter.CTkFrame(root)
-    frame.pack(pady=10, padx=10, fill="both", expand=True)
+    # Main frame
+    main_frame = customtkinter.CTkFrame(root)
+    main_frame.pack(pady=10, padx=10, fill="both", expand=True)
 
-    # A label for representation
-    #label = customtkinter.CTkLabel(frame, text="Main Client Interface", font=("Roboto", 36))
-    #label.pack(pady=24, padx=10)
+    # Video frame
+    video_frame = customtkinter.CTkFrame(main_frame)
+    video_frame.pack(fill="both", expand=True, pady=(0, 10))
 
-    # Create a Frame for VLC player inside the main frame
-    vlc_frame = tkinter.Frame(frame)
-    vlc_frame.pack(pady=20, fill=tkinter.BOTH, expand=True)
-
-    # VLC setup
-    vlc_instance = vlc.Instance()
-    player = vlc_instance.media_player_new()
+    # Set up MPV player in the video frame
+    player = mpv.MPV(wid=str(video_frame.winfo_id()), ytdl=True)
     
-    if platform.system() == "Windows":
-        player.set_hwnd(vlc_frame.winfo_id())
-    elif platform.system() == "Darwin":  # macOS
-        from ctypes import c_void_p
-        ns_view = c_void_p(vlc_frame.winfo_id())
-        player.set_nsobject(ns_view.value)
-    elif platform.system() == "Linux":
-        player.set_xwindow(vlc_frame.winfo_id())
-    else:
-        raise Exception("Unsupported OS")
+    # Load and play the video
+    video_path = os.path.join("videos", video_name)
+    player.play(video_path)
+    player.volume = 50
 
-    # Add a play button or other controls if necessary
-    btn_play = customtkinter.CTkButton(frame, text="Play Video", command=lambda: play_video(player))
-    btn_play.pack(pady=20)
+    # Controls frame
+    controls_frame = customtkinter.CTkFrame(main_frame)
+    controls_frame.pack(fill="x", pady=(0, 10), padx=10)
+
+    # Pause/Play button
+    def toggle_play_pause():
+        if player.pause:
+            player.pause = False
+            btn_pause_play.configure(text="Pause")
+        else:
+            player.pause = True
+            btn_pause_play.configure(text="Play")
+            update_duration()
+
+    btn_pause_play = customtkinter.CTkButton(controls_frame, text="Pause", font=("Roboto", 14), command=toggle_play_pause)
+    btn_pause_play.pack(side='left', padx=5)
+
+    # Forward and Backward buttons
+    btn_backward = customtkinter.CTkButton(controls_frame, text="<< 10s", font=("Roboto", 14), command=lambda: update_duration())
+    btn_backward.pack(side='left', padx=5)
+
+    btn_forward = customtkinter.CTkButton(controls_frame, text=">> 10s", font=("Roboto", 14), command=lambda: update_duration())
+    btn_forward.pack(side='left', padx=5)
+
+    def update_duration():
+        print("this would update the video seek bar and the texts.")
+
+    # Current duration label
+    lbl_duration = customtkinter.CTkLabel(controls_frame, text="0:00", font=("Roboto", 14))
+    lbl_duration.pack(side='left', padx=5)
+
+    # Use more space for the seek bar
+    seek_slider = customtkinter.CTkSlider(controls_frame, width=400)
+    seek_slider.pack(side='left', padx=5, fill="x", expand=True)
+
+    # Total duration label
+    lbl_total_time = customtkinter.CTkLabel(controls_frame, text="0:00", font=("Roboto", 14))
+    lbl_total_time.pack(side='left', padx=5)
+
+    lbl_current_volume = customtkinter.CTkLabel(controls_frame, text=str(int(player.volume)), font=("Roboto", 14))
+    lbl_current_volume.pack(side='left', padx=5)
+
+    def adjust_volume(lbl_current_volume, event=None):
+        volume = max(0, min(100, int(volume_slider.get())))
+        player.volume = volume
+        lbl_current_volume.configure(text=str(volume))
+
+    # Compact volume slider
+    volume_slider = customtkinter.CTkSlider(controls_frame, width=100, from_=0, to=100)
+    volume_slider.set(50)
+    volume_slider.bind("<ButtonRelease-1>", lambda event, lbl=lbl_current_volume: adjust_volume(lbl, event))
+    volume_slider.pack(side='left', padx=5)
+
+    # Stop button
+    btn_stop = customtkinter.CTkButton(controls_frame, text="Stop", font=("Roboto", 14), fg_color="red", hover_color="darkred", command=stop_playing_video)
+    btn_stop.pack(side='right', padx=5)
 
 # GENERAL CLIENT FUNCS
 
@@ -386,15 +443,6 @@ def init_client():
     # Start Graphical Interface
     root = create_connect_menu()
     root.mainloop()
-
-# TESTE
-
-def play_video(player):
-    # This plays the video inside the frame.
-    # You can use any video source, such as a file path or a streaming URL.
-    media = vlc_instance.media_new('videos/yellow.ts')
-    player.set_media(media)
-    player.play()
 
 
 if __name__ == "__main__":
